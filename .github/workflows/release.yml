@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -32,7 +33,7 @@ jobs:
       - name: Build for ${{ matrix.arch }}
         run: |
           zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseSafe
-          strip zig-out/bin/watchz
+          llvm-strip zig-out/bin/watchz
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
