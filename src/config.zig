@@ -27,6 +27,10 @@ pub const Config = struct {
     rolling_restart: bool = false,
     stop_timeout: u64 = 10, // seconds
 
+    // Registry client options
+    registry_timeout: u64 = 30, // seconds for HTTP requests
+    registry_retries: u8 = 3, // number of retry attempts
+
     // Logging
     log_level: log.Level = .info,
 

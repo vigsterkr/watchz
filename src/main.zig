@@ -52,7 +52,7 @@ fn mainTask(rt: *zio.Runtime, cfg: *config.Config) !void {
     var client = docker_client.AsyncClient.init(allocator, socket_path, cfg.api_version);
 
     // Create Registry client
-    var reg_client = registry_client.RegistryClient.init(allocator);
+    var reg_client = registry_client.RegistryClient.init(allocator, cfg);
     defer reg_client.deinit();
 
     // Load Docker credentials from ~/.docker/config.json
@@ -286,6 +286,12 @@ fn parseArgs(allocator: std.mem.Allocator) !config.Config {
         } else if (std.mem.eql(u8, arg, "--stop-timeout")) {
             const value = args.next() orelse return error.MissingValue;
             cfg.stop_timeout = try std.fmt.parseInt(u64, value, 10);
+        } else if (std.mem.eql(u8, arg, "--registry-timeout")) {
+            const value = args.next() orelse return error.MissingValue;
+            cfg.registry_timeout = try std.fmt.parseInt(u64, value, 10);
+        } else if (std.mem.eql(u8, arg, "--registry-retries")) {
+            const value = args.next() orelse return error.MissingValue;
+            cfg.registry_retries = try std.fmt.parseInt(u8, value, 10);
         } else if (std.mem.startsWith(u8, arg, "-")) {
             log.err("Unknown option: {s}", .{arg});
             return error.UnknownOption;
@@ -386,6 +392,10 @@ fn printHelp() !void {
         \\  --stop-timeout <SECONDS>      Timeout for stopping containers (default: 10)
         \\  --label-enable                Only update containers with enable label
         \\  --scope <SCOPE>               Filter by scope label
+        \\
+        \\REGISTRY OPTIONS:
+        \\  --registry-timeout <SECONDS>  HTTP timeout for registry requests (default: 30)
+        \\  --registry-retries <COUNT>    Number of retry attempts for transient errors (default: 3)
         \\
         \\DOCKER OPTIONS:
         \\  -H, --host <HOST>             Docker host (default: unix:///var/run/docker.sock)

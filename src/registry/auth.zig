@@ -5,6 +5,7 @@ const log = @import("../utils/log.zig");
 const encoding = @import("../utils/encoding.zig");
 const docker_config = @import("docker_config.zig");
 const decompress_utils = @import("../utils/decompress.zig");
+const retry = @import("../utils/retry.zig");
 
 // Hardcoded registry list removed - now uses WWW-Authenticate discovery
 // Only Docker Hub is handled as a special case in getRegistryToken()
@@ -90,11 +91,18 @@ pub fn parseWWWAuthenticate(allocator: std.mem.Allocator, header_value: []const 
 pub const Authenticator = struct {
     allocator: std.mem.Allocator,
     config: std.StringHashMap(types.AuthConfig),
+    retry_config: retry.RetryConfig,
 
     pub fn init(allocator: std.mem.Allocator) Authenticator {
         return .{
             .allocator = allocator,
             .config = std.StringHashMap(types.AuthConfig).init(allocator),
+            .retry_config = .{
+                .max_retries = 3,
+                .initial_delay_ms = 1000,
+                .max_delay_ms = 10000,
+                .backoff_multiplier = 2.0,
+            },
         };
     }
 
@@ -289,8 +297,22 @@ pub const Authenticator = struct {
         return try self.getAuthenticatedToken(repository, auth);
     }
 
-    /// Helper to perform HTTP GET and return body
+    /// Helper to perform HTTP GET with retry logic
     fn httpGetWithAuth(
+        self: *Authenticator,
+        url: []const u8,
+        auth_header: ?[]const u8,
+    ) ![]u8 {
+        return retry.retryWithBackoff(
+            self.retry_config,
+            "fetch auth token",
+            httpGetWithAuthOnce,
+            .{ self, url, auth_header },
+        );
+    }
+
+    /// Internal helper to perform HTTP GET and return body (wrapped with retry)
+    fn httpGetWithAuthOnce(
         self: *Authenticator,
         url: []const u8,
         auth_header: ?[]const u8,

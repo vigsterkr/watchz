@@ -4,6 +4,8 @@ const types = @import("types.zig");
 const auth = @import("auth.zig");
 const log = @import("../utils/log.zig");
 const decompress_utils = @import("../utils/decompress.zig");
+const retry = @import("../utils/retry.zig");
+const Config = @import("../config.zig").Config;
 
 /// Check if an image is definitely a local image ID (not a registry reference)
 fn isLocalImage(image_name: []const u8) bool {
@@ -17,12 +19,19 @@ pub const RegistryClient = struct {
     allocator: std.mem.Allocator,
     authenticator: auth.Authenticator,
     http_client: http.Client,
+    retry_config: retry.RetryConfig,
 
-    pub fn init(allocator: std.mem.Allocator) RegistryClient {
+    pub fn init(allocator: std.mem.Allocator, config: *const Config) RegistryClient {
         return .{
             .allocator = allocator,
             .authenticator = auth.Authenticator.init(allocator),
             .http_client = http.Client{ .allocator = allocator },
+            .retry_config = .{
+                .max_retries = config.registry_retries,
+                .initial_delay_ms = 1000,
+                .max_delay_ms = 10000,
+                .backoff_multiplier = 2.0,
+            },
         };
     }
 
@@ -81,6 +90,20 @@ pub const RegistryClient = struct {
     /// Get the manifest digest for an image
     /// This is the core operation for checking if an image has been updated
     pub fn getManifestDigest(
+        self: *RegistryClient,
+        image_ref: *const types.ImageRef,
+    ) ![]const u8 {
+        // Wrap the fetch operation with retry logic
+        return retry.retryWithBackoff(
+            self.retry_config,
+            "fetch manifest digest",
+            fetchManifestDigestOnce,
+            .{ self, image_ref },
+        );
+    }
+
+    /// Internal function to fetch manifest digest (will be wrapped with retry)
+    fn fetchManifestDigestOnce(
         self: *RegistryClient,
         image_ref: *const types.ImageRef,
     ) ![]const u8 {
@@ -207,6 +230,20 @@ pub const RegistryClient = struct {
 
     /// Fetch the full manifest for an image
     pub fn getManifest(
+        self: *RegistryClient,
+        image_ref: *const types.ImageRef,
+    ) ![]const u8 {
+        // Wrap the fetch operation with retry logic
+        return retry.retryWithBackoff(
+            self.retry_config,
+            "fetch manifest",
+            fetchManifestOnce,
+            .{ self, image_ref },
+        );
+    }
+
+    /// Internal function to fetch manifest (will be wrapped with retry)
+    fn fetchManifestOnce(
         self: *RegistryClient,
         image_ref: *const types.ImageRef,
     ) ![]const u8 {
@@ -455,7 +492,8 @@ test "ImageRef parse and reconstruct" {
 
 test "RegistryClient init and deinit" {
     const allocator = std.testing.allocator;
-    var client = RegistryClient.init(allocator);
+    const config = Config.init(allocator);
+    var client = RegistryClient.init(allocator, &config);
     defer client.deinit();
 }
 

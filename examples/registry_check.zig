@@ -37,8 +37,11 @@ pub fn main() !void {
     std.debug.print("Checking for updates: {s}\n", .{image_name});
     std.debug.print("Current digest: {s}\n\n", .{current_digest});
 
+    // Create default config for the example
+    const config = @import("../src/config.zig").Config.init(allocator);
+
     // Create registry client
-    var client = registry.RegistryClient.init(allocator);
+    var client = registry.RegistryClient.init(allocator, &config);
     defer client.deinit();
 
     // Check for updates
