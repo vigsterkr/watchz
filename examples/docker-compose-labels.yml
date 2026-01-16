@@ -1,0 +1,98 @@
+# Example docker-compose.yml demonstrating WatchZ label usage
+# This file shows both Watchtower-compatible labels and WatchZ custom labels
+
+version: '3.8'
+
+services:
+  # Example 1: Using WatchZ custom labels (ing.wik.watchz.*)
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    labels:
+      - "ing.wik.watchz.enable=true"          # Enable monitoring
+      - "ing.wik.watchz.scope=production"     # Scope for filtering
+    ports:
+      - "80:80"
+
+  # Example 2: Using Watchtower labels (fully compatible)
+  redis:
+    image: redis:alpine
+    container_name: redis
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "com.centurylinklabs.watchtower.monitor-only=true"  # Check but don't update
+    ports:
+      - "6379:6379"
+
+  # Example 3: Disabled container (will never be updated)
+  postgres:
+    image: postgres:14
+    container_name: postgres
+    labels:
+      - "ing.wik.watchz.enable=false"         # Explicitly disabled
+    environment:
+      POSTGRES_PASSWORD: example
+    ports:
+      - "5432:5432"
+
+  # Example 4: Custom stop signal
+  app:
+    image: myapp:latest
+    container_name: myapp
+    labels:
+      - "ing.wik.watchz.enable=true"
+      - "ing.wik.watchz.stop-signal=SIGUSR1"  # Graceful shutdown signal
+      - "ing.wik.watchz.scope=production"
+
+  # Example 5: No-pull container (check for updates but don't pull)
+  cache:
+    image: memcached:alpine
+    container_name: cache
+    labels:
+      - "ing.wik.watchz.enable=true"
+      - "ing.wik.watchz.no-pull=true"         # Don't pull new images
+
+  # Example 6: Staging scope
+  staging-app:
+    image: myapp:staging
+    container_name: staging-app
+    labels:
+      - "ing.wik.watchz.enable=true"
+      - "ing.wik.watchz.scope=staging"        # Different scope
+
+  # Example 7: No labels (will be monitored unless --label-enable is used)
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+
+  # Example 8: Mixed labels (both Watchtower and WatchZ)
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: elasticsearch
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"  # Watchtower label
+      - "ing.wik.watchz.monitor-only=true"            # WatchZ label
+    environment:
+      - discovery.type=single-node
+
+# Usage examples:
+#
+# 1. Monitor all containers (no filtering):
+#    watchz --run-once
+#
+# 2. Monitor only containers with enable label:
+#    watchz --label-enable --run-once
+#
+# 3. Monitor only production scope:
+#    watchz --scope production --run-once
+#
+# 4. Monitor only staging scope (different instance):
+#    watchz --scope staging --run-once
+#
+# 5. Monitor specific containers by name:
+#    watchz nginx redis --run-once
+#
+# 6. Debug mode to see all labels:
+#    watchz --debug --run-once

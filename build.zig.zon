@@ -1,0 +1,17 @@
+.{
+    .name = .watchz,
+    .version = "0.1.0",
+    .fingerprint = 0xb08ff918c5e2dba7,
+    .minimum_zig_version = "0.15.0",
+    .dependencies = .{
+        .zio = .{
+            .url = "git+https://github.com/lalinsky/zio#0a7d9b999ceec10d3f00746f911654b462ae34c3",
+            .hash = "zio-0.4.0-xHbVVP1lFQAHWeydlM6YY7aUfmD9D7dex3dVZU8iQ938",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

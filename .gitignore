@@ -1,0 +1,22 @@
+# Zig build artifacts
+.zig-cache/
+zig-out/
+zig-cache/
+
+# OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.iml
+
+# Test files
+test_demo.sh
