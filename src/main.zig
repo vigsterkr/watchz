@@ -55,8 +55,27 @@ fn mainTask(rt: *zio.Runtime, cfg: *config.Config) !void {
     var reg_client = registry_client.RegistryClient.init(allocator);
     defer reg_client.deinit();
 
-    // Test connection
+    // Load Docker credentials from ~/.docker/config.json
+    log.debug("Loading Docker credentials...", .{});
+    reg_client.authenticator.loadFromDockerConfig() catch |err| {
+        log.debug("Could not load Docker config: {}", .{err});
+    };
+
+    // Count loaded credentials
+    var cred_count: usize = 0;
+    var reg_iter = reg_client.authenticator.config.iterator();
+    while (reg_iter.next()) |_| {
+        cred_count += 1;
+    }
+    if (cred_count > 0) {
+        log.info("Loaded credentials for {d} registry(ies)", .{cred_count});
+    }
+
+    // Negotiate API version with Docker daemon
     log.info("Connecting to Docker daemon...", .{});
+    try client.negotiateApiVersion(rt);
+
+    // Test connection
     try client.ping(rt);
 
     // Get Docker version
@@ -125,7 +144,7 @@ fn checkAndUpdateTask(
             const should_pull = container_filter.shouldPull(&container);
 
             if (monitor_only) {
-                log.info("      Mode: MONITOR-ONLY (no updates)", .{});
+                log.info("      Mode: MONITOR-ONLY (detection only)", .{});
             }
             if (!should_pull) {
                 log.info("      Pull: DISABLED (no-pull label)", .{});
@@ -138,29 +157,39 @@ fn checkAndUpdateTask(
         return;
     }
 
-    // Check for updates and perform them if not in monitor-only mode
-    if (!cfg.monitor_only) {
-        var updater = updater_mod.ContainerUpdater.init(allocator, client, reg_client, cfg, null);
+    // Check for updates (always, regardless of monitor-only mode)
+    log.info("Checking for available updates...", .{});
 
-        // Check which containers need updates
-        const ContainerPtr = *const @TypeOf(containers[0]);
-        var containers_to_update: std.ArrayList(ContainerPtr) = .{};
-        defer containers_to_update.deinit(allocator);
+    var updater = updater_mod.ContainerUpdater.init(allocator, client, reg_client, cfg, null);
 
-        for (filtered.items) |filtered_container| {
-            // Find the full container object
-            for (containers) |*container| {
-                if (std.mem.eql(u8, container.id, filtered_container.id)) {
-                    if (updater.needsUpdate(rt, container) catch false) {
-                        try containers_to_update.append(allocator, container);
-                    }
-                    break;
+    // Check which containers need updates
+    const ContainerPtr = *const @TypeOf(containers[0]);
+    var containers_to_update: std.ArrayList(ContainerPtr) = .{};
+    defer containers_to_update.deinit(allocator);
+
+    for (filtered.items) |filtered_container| {
+        // Find the full container object
+        for (containers) |*container| {
+            if (std.mem.eql(u8, container.id, filtered_container.id)) {
+                if (updater.needsUpdate(rt, container) catch false) {
+                    try containers_to_update.append(allocator, container);
                 }
+                break;
             }
         }
+    }
 
-        if (containers_to_update.items.len > 0) {
-            log.info("Updating {d} container(s)...", .{containers_to_update.items.len});
+    if (containers_to_update.items.len > 0) {
+        log.info("Found {d} container(s) with updates available:", .{containers_to_update.items.len});
+
+        // List containers with updates
+        for (containers_to_update.items) |container| {
+            log.info("  📦 {s} - update available", .{container.name});
+        }
+
+        // Only perform updates if NOT in monitor-only mode
+        if (!cfg.monitor_only) {
+            log.info("Applying updates to {d} container(s)...", .{containers_to_update.items.len});
 
             // Convert to slice
             const to_update_slice = try allocator.alloc(@TypeOf(containers[0]), containers_to_update.items.len);
@@ -194,10 +223,13 @@ fn checkAndUpdateTask(
 
             log.info("Update complete: {d} succeeded, {d} failed", .{ success_count, failure_count });
         } else {
-            log.info("All containers are up to date", .{});
+            log.info("=== DRY RUN MODE ===", .{});
+            log.info("Monitor-only mode: Updates detected but NOT applied", .{});
+            log.info("Remove --monitor-only flag to apply these updates", .{});
+            log.info("===================", .{});
         }
     } else {
-        log.info("Monitor-only mode: skipping updates", .{});
+        log.info("All containers are up to date ✓", .{});
     }
 }
 

@@ -1,5 +1,8 @@
 const std = @import("std");
 
+/// Empty struct for map values (exposed ports, volumes)
+pub const EmptyValue = struct {};
+
 pub const Container = struct {
     id: []const u8,
     name: []const u8,
@@ -54,6 +57,8 @@ pub const ContainerConfig = struct {
     entrypoint: std.ArrayList([]const u8),
     working_dir: []const u8,
     user: []const u8,
+    exposed_ports: std.StringHashMap(EmptyValue),
+    volumes: std.StringHashMap(EmptyValue),
 
     allocator: std.mem.Allocator,
 
@@ -67,6 +72,8 @@ pub const ContainerConfig = struct {
             .entrypoint = .{},
             .working_dir = "",
             .user = "",
+            .exposed_ports = std.StringHashMap(EmptyValue).init(allocator),
+            .volumes = std.StringHashMap(EmptyValue).init(allocator),
             .allocator = allocator,
         };
     }
@@ -83,6 +90,8 @@ pub const ContainerConfig = struct {
         self.entrypoint.deinit(self.allocator);
         if (self.working_dir.len > 0) self.allocator.free(self.working_dir);
         if (self.user.len > 0) self.allocator.free(self.user);
+        self.exposed_ports.deinit();
+        self.volumes.deinit();
     }
 };
 
@@ -111,6 +120,11 @@ pub const HostConfig = struct {
     restart_policy: RestartPolicy,
     network_mode: []const u8,
     privileged: bool,
+    links: std.ArrayList([]const u8),
+    auto_remove: bool,
+    publish_all_ports: bool,
+    cap_add: std.ArrayList([]const u8),
+    cap_drop: std.ArrayList([]const u8),
 
     allocator: std.mem.Allocator,
 
@@ -121,6 +135,11 @@ pub const HostConfig = struct {
             .restart_policy = .{ .name = "", .maximum_retry_count = 0 },
             .network_mode = "",
             .privileged = false,
+            .links = .{},
+            .auto_remove = false,
+            .publish_all_ports = false,
+            .cap_add = .{},
+            .cap_drop = .{},
             .allocator = allocator,
         };
     }
@@ -141,6 +160,15 @@ pub const HostConfig = struct {
 
         if (self.restart_policy.name.len > 0) self.allocator.free(self.restart_policy.name);
         if (self.network_mode.len > 0) self.allocator.free(self.network_mode);
+
+        for (self.links.items) |item| self.allocator.free(item);
+        self.links.deinit(self.allocator);
+
+        for (self.cap_add.items) |item| self.allocator.free(item);
+        self.cap_add.deinit(self.allocator);
+
+        for (self.cap_drop.items) |item| self.allocator.free(item);
+        self.cap_drop.deinit(self.allocator);
     }
 };
 
@@ -171,6 +199,7 @@ pub const NetworkSettings = struct {
         while (iter.next()) |entry| {
             if (entry.value_ptr.ip_address.len > 0) self.allocator.free(entry.value_ptr.ip_address);
             if (entry.value_ptr.gateway.len > 0) self.allocator.free(entry.value_ptr.gateway);
+            entry.value_ptr.deinit(self.allocator);
         }
         self.networks.deinit();
     }
@@ -180,6 +209,13 @@ pub const NetworkEndpoint = struct {
     network_id: []const u8,
     ip_address: []const u8,
     gateway: []const u8,
+    ip_prefix_len: i32,
+    aliases: std.ArrayList([]const u8),
+
+    pub fn deinit(self: *NetworkEndpoint, allocator: std.mem.Allocator) void {
+        for (self.aliases.items) |alias| allocator.free(alias);
+        self.aliases.deinit(allocator);
+    }
 };
 
 pub const Image = struct {
